@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+service Inference{
+  rpc infer(ImgRequest) returns (ImgReply){}
+}
+
+message ImgRequest{
+    bytes data =1;
+    int32 height = 2;
+    int32 width = 3;
+    string text = 4;
+    string color_map = 5;
+    float threshold = 6;
+    
+    map<string, InferParameter> parameters = 7;
+}
+
+message ImgReply{
+    repeated float scores = 1;
+    repeated int32 labels  = 2;
+    repeated float bboxes = 3;
+    int32 num_object = 4;
+   
+    map<string, InferParameter> parameters = 5;
+}
+
+message InferParameter
+{
+  //@@  .. cpp:var:: oneof parameter_choice
+  //@@
+  //@@     The parameter value can be a string, an int64 or
+  //@@     a boolean
+  //@@
+  oneof parameter_choice
+  {
+    //@@    .. cpp:var:: bool bool_param
+    //@@
+    //@@       A boolean parameter value.
+    //@@
+    bool bool_param = 1;
+
+    //@@    .. cpp:var:: int64 int64_param
+    //@@
+    //@@       An int64 parameter value.
+    //@@
+    int64 int64_param = 2;
+
+    //@@    .. cpp:var:: string string_param
+    //@@
+    //@@       A string parameter value.
+    //@@
+    string string_param = 3;
+  }
+}

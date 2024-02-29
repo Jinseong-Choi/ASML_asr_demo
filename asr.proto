@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package asr;
+
+// The request message containing the audio data.
+message ASRRequest {
+  string filepath = 1; // filepath in string
+  string language = 2; // language data in string
+}
+
+// The response message containing the transcription.
+message ASRReply {
+  string transcription = 1; // Transcribed text
+}
+
+// The ASR service definition.
+service ASRService {
+  // Sends audio data and receives a transcription.
+  rpc Transcribe (ASRRequest) returns (ASRReply) {}
+}
