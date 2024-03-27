@@ -6,6 +6,8 @@ package asr;
 message ASRRequest {
   string filepath = 1; // filepath in string
   string language = 2; // language data in string
+  bool with_timestamps = 3; // whther to get timetamps for return texts
+  float duration = 4; // audio duration
 }
 
 // The response message containing the transcription.
@@ -13,8 +15,19 @@ message ASRReply {
   string transcription = 1; // Transcribed text
 }
 
+// The request message containing the model name.
+message ReloadModelRequest {
+  string model_name = 1;
+}
+
+// The response message replying success of model change.
+message ReloadModelReply {
+  bool success = 1;
+}
+
 // The ASR service definition.
 service ASRService {
   // Sends audio data and receives a transcription.
   rpc Transcribe (ASRRequest) returns (ASRReply) {}
+  rpc ReloadModel (ReloadModelRequest) returns (ReloadModelReply) {}
 }

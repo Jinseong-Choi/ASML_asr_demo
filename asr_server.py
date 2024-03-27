@@ -17,48 +17,90 @@ from concurrent import futures
 import logging
 
 import grpc
-import asr_pb2
-import asr_pb2_grpc
+import protos.asr_pb2 as asr_pb2
+import protos.asr_pb2_grpc as asr_pb2_grpc
 
 import torch
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
+from faster_whisper import WhisperModel
+
+class fast_pipeline():
+    def __init__(self, model):
+        self.model = model
+        self.epd_margin = 0.1
+
+    def __call__(self, filepath, generation_config, duration):
+        if "condition_on_prev_tokens" in generation_config:
+            generation_config["condition_on_previous_text"] = generation_config.pop("condition_on_prev_tokens")
+        if "logprob_threshold" in generation_config:
+            generation_config["log_prob_threshold"] = generation_config.pop("logprob_threshold")
+
+        segments, _ = self.model.transcribe(filepath, beam_size=1, without_timestamps=False, **generation_config)
+
+        notimestamped_text = ""
+        timestamped_text = ""
+        for segment in segments:
+            if float(segment.start) >= float(duration) - self.epd_margin:
+                break
+            notimestamped_text += f"{segment.text}\n"
+            timestamped_text += f"[{segment.start:.2f}:{segment.end:.2f}] {segment.text}\n"
+
+        return notimestamped_text, timestamped_text
 
 class ASR(asr_pb2_grpc.ASRServiceServicer):
     def __init__(self):
         # Initialize and load the model and pipeline here, so it's done only once
         self.device = "cuda:0" if torch.cuda.is_available() else "cpu"
         self.torch_dtype = torch.float32
+        self.use_model("fast_v3")
 
-        model_path = "/home/ubuntu/Workspace/g_dino_serve/models"
-        self.model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            model_path, torch_dtype=self.torch_dtype, low_cpu_mem_usage=True, use_safetensors=True
-        )
-        self.model.to(self.device)
-        processor = AutoProcessor.from_pretrained(model_path)
-        self.pipe = pipeline("automatic-speech-recognition", model=self.model, tokenizer=processor.tokenizer, feature_extractor=processor.feature_extractor, torch_dtype=self.torch_dtype)
+        # Decoding configurations
+        temperature = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0]
+        no_speech_threshold = 0.6
+        logprob_threshold = -1.0
 
-    def transcribe_speech(self, filepath, language):
-        output = self.pipe(
+        self.generate_config = {"task": "transcribe"}
+        self.generate_config["max_new_tokens"] = 256
+        self.generate_config["condition_on_prev_tokens"] = False
+        self.generate_config["no_speech_threshold"] = no_speech_threshold
+        self.generate_config["temperature"] = temperature
+        self.generate_config["logprob_threshold"] = logprob_threshold
+
+    def use_model(self, model_choice):
+        model_path = f"/home/ubuntu/Workspace/gradio_asr/models/{model_choice}"
+        self.model = WhisperModel(model_path, device="cuda", compute_type="float16")
+        self.pipe = fast_pipeline(model=self.model)
+
+    def transcribe_speech(self, filepath, language, with_timestamps, duration):
+        if language == "ko":
+            self.generate_config["no_speech_threshold"] = 0.55
+            self.generate_config["logprob_threshold"] = -0.3
+        else:
+            self.generate_config["no_speech_threshold"] = 0.6
+            self.generate_config["logprob_threshold"] = -1.0
+        self.generate_config["language"] = language
+
+        notimestamped_text, timestamped_text = self.pipe(
             filepath,
-            max_new_tokens=256,
-            generate_kwargs={
-                "task": "transcribe",
-                "language": language,
-            },  # update with the language you've fine-tuned on
-            chunk_length_s=30,
-            batch_size=1,
+            self.generate_config,
+            duration
         )
-        return output["text"]
+        
+        return timestamped_text if with_timestamps else notimestamped_text
 
     def Transcribe(self, request, context):
-        # request.audio_data = audio
-        # request.sampling_rate = sr
-        # request.language = language
-        transcription = self.transcribe_speech(request.filepath, request.language)
+        transcription = self.transcribe_speech(request.filepath, request.language, request.with_timestamps, request.duration)
         reply = asr_pb2.ASRReply()
         reply.transcription = transcription
         return reply
-
+    
+    def ReloadModel(self, request, context):
+        try:
+            self.use_model(request.model_name)
+            return asr_pb2.ReloadModelReply(success=True)
+        except Exception as e:
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(f'Failed to reload model: {e}')
+            return asr_pb2.ReloadModelReply(success=False)
 
 def serve():
     port = "50051"

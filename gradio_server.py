@@ -2,8 +2,13 @@ import gradio as gr
 from PIL import Image
 import grpc
 
-import asr_pb2
-import asr_pb2_grpc
+import protos.asr_pb2 as asr_pb2
+import protos.asr_pb2_grpc as asr_pb2_grpc
+
+import os
+import base64
+
+import torchaudio
 
 LANGUAGES = {
     "en": "english",
@@ -108,33 +113,80 @@ LANGUAGES = {
     "yue": "cantonese",
 }
 
-languages = list(LANGUAGES.values())
+# Choices
+languages = []
+lang_to_code = {}
+for code, lang in LANGUAGES.items():
+    languages.append(lang)
+    lang_to_code[lang] = code
+model_choices = os.listdir("models")
+
+# Title
+with open("images/kep_logo.png", "rb") as image_file:
+    encoded_string = base64.b64encode(image_file.read()).decode()
+image_md = f"""
+<div align="center">
+    <img src="data:image/png;base64,{encoded_string}" alt="KEP Logo" style="max-width:50%;">
+</div>
+"""
+text_md = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@700&display=swap');
+</style>
+
+<div style="text-align: center; font-size: 60px; font-weight: bold; font-family: 'Brush Script MT', cursive;">
+KEP ASR Demo
+</div>
+"""
 
 def clear_interface():
     return None, ""
 
-def request(filepath, language):
+def get_audio_duration_torchaudio(filepath):
+    audio_tensor, sample_rate = torchaudio.load(filepath)
+    duration = audio_tensor.shape[1] / sample_rate
+    return duration
+
+def request(filepath, language, with_timestamps):
     channel = grpc.insecure_channel('localhost:50051')
     stub = asr_pb2_grpc.ASRServiceStub(channel)
     request = asr_pb2.ASRRequest()
     request.filepath = filepath
-    request.language = language
+    request.language = lang_to_code[language]
+    request.with_timestamps = with_timestamps
+    request.duration = get_audio_duration_torchaudio(filepath)
 
     # TODO: Asynchronous call
     response = stub.Transcribe(request)
 
     return response.transcription
 
+def reload_model(model_name):
+    channel = grpc.insecure_channel('localhost:50051')
+    stub = asr_pb2_grpc.ASRServiceStub(channel)
+    request = asr_pb2.ReloadModelRequest(model_name=model_name)
+    response = stub.ReloadModel(request)
+    if response.success:
+        gr.Info("Model reloaded")
+    else:
+        gr.Warning("Model reloading failed")
+
 def create_interface_for_microphone():
     with gr.Column():
         with gr.Row():
             with gr.Column():
+                with gr.Row():
+                    model = gr.Dropdown(label='Model', choices=model_choices, value="fast_v3")
+                    reload_button = gr.Button(value="Reload model", icon="images/reload.png")
+                    reload_button.click(fn=reload_model, inputs=[model], outputs=[])
                 audio_input = gr.Audio(sources="microphone", label='Input Speech', type="filepath")
                 language = gr.Dropdown(label='Language', choices=languages, value="korean")
-            transcribed_text = gr.Textbox(label='Transcribed Text')
+            with gr.Column():
+                with_timetstamps = gr.Checkbox(label="With Timestamps", value=False)
+                transcribed_text = gr.Textbox(label='Transcribed Text')
         with gr.Row():
             transcribe_button = gr.Button('Transcribe')
-            transcribe_button.click(fn=request, inputs=[audio_input, language], outputs=transcribed_text)
+            transcribe_button.click(fn=request, inputs=[audio_input, language, with_timetstamps], outputs=transcribed_text)
             clear_button = gr.Button('Clear')
             clear_button.click(fn=clear_interface, inputs=[], outputs=[audio_input, transcribed_text])
 
@@ -142,17 +194,24 @@ def create_interface_for_file_upload():
     with gr.Column():
         with gr.Row():
             with gr.Column():
+                with gr.Row():
+                    model = gr.Dropdown(label='Model', choices=model_choices, value="fast_v3")
+                    reload_button = gr.Button(value="Reload model", icon="images/reload.png")
+                    reload_button.click(fn=reload_model, inputs=[model], outputs=[])
                 audio_input = gr.Audio(sources="upload", label='Input Speech', type="filepath")
                 language = gr.Dropdown(label='Language', choices=languages, value="korean")
-            transcribed_text = gr.Textbox(label='Transcribed Text')
+            with gr.Column():
+                with_timetstamps = gr.Checkbox(label="With Timestamps", value=False)
+                transcribed_text = gr.Textbox(label='Transcribed Text')
         with gr.Row():
             transcribe_button = gr.Button('Transcribe')
-            transcribe_button.click(fn=request, inputs=[audio_input, language], outputs=transcribed_text)
+            transcribe_button.click(fn=request, inputs=[audio_input, language, with_timetstamps], outputs=transcribed_text)
             clear_button = gr.Button('Clear')
             clear_button.click(fn=clear_interface, inputs=[], outputs=[audio_input, transcribed_text])
 
-with gr.Blocks() as demo:
-    gr.Markdown("# KEP ASR Demo")
+with gr.Blocks(theme='abidlabs/banana') as demo:
+    gr.Markdown(text_md)
+    gr.Markdown(image_md)
     with gr.Tab("Transcribe from audio file"):
         create_interface_for_file_upload()
     with gr.Tab("Transcribe from microphone"):
