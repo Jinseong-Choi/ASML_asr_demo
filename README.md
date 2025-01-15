@@ -1,4 +1,4 @@
-# Gradio demo for Whisper ASR
+# ASML ASR Demo
 ## Installation
 ```bash
 cd /path/to/gradio_asr/tools
