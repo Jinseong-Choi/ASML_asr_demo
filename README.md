@@ -36,8 +36,8 @@ cd /path/to/gradio_asr
 python gradio_server.py
 ```
 
-### ASR DEMO video
-### Speaker video & demo video
+# ASR DEMO video
+## Speaker video & demo video
 <p align="center">
 <img src="https://github.com/user-attachments/assets/e7e61370-efc0-4ed1-b168-052abb33a612" alt="Demo Video Thumbnail">
 </p>
