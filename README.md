@@ -35,3 +35,12 @@ cd /path/to/gradio_asr
 . tools/activate_python.sh
 python gradio_server.py
 ```
+
+### ASR DEMO video
+### Speaker video & demo video
+<p align="center">
+<img src="https://github.com/user-attachments/assets/e7e61370-efc0-4ed1-b168-052abb33a612" alt="Demo Video Thumbnail">
+</p>
+<p align="center">
+<img src="https://github.com/user-attachments/assets/5121176f-3cca-41cb-86f0-57dc5b1111b6" alt="Demo Video Thumbnail">
+</p>
